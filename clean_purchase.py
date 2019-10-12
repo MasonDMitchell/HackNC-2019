@@ -9,8 +9,9 @@ import sys
 filepath = sys.argv[1]
 filename = filepath[filepath.rfind('/')+1:]
 print(filepath)
-print(filename)
 data = pd.read_csv(filepath)
+
+
 
 print("Adding year column")
 data['year'] = data.apply(lambda row: str(row.QREDATE)[-6:-2], axis=1)
@@ -30,7 +31,11 @@ for user in users:
         invalid_users.append(user)
         data = data[data.NEWID != user]
 
+print("Mapping UCC to Category")
+uccdata = pd.read_csv("categorized_ucc_dictionary.csv")
+data['category'] = data['UCC'].map(uccdata.set_index('UCC')['CATEGORY'])
+
 print("Dropping unneeded columns")
-data = data.drop(columns=["ALLOC","GIFT","PUB_FLAG","QREDATE","QREDATE_"],axis=1)
+data = data.drop(columns=["UCC","ALLOC","GIFT","PUB_FLAG","QREDATE","QREDATE_"],axis=1)
 
 data.to_csv('clean_data/'+filename,index=False)
