@@ -5,17 +5,19 @@ library(rstan)
 args = commandArgs(trailingOnly=TRUE);
 
 rstan_options("auto_write" = TRUE);
+options(mc.cores = parallel::detectCores());
 
 unlink(file.path(".","results"),recursive=TRUE);
 dir.create(file.path(".", "results"), showWarnings = FALSE);
 
-predict_day_count <- 30
+predict_day_count <- 30;
 person_id <- -1;
 input_file <- "../clean_data/expd081.csv";
 model_file <- "simple_categorical.stan";
+training_person_count <- 10;
 
 if (length(args) == 0){
-  print("Usage: Rscript --vanilla test.R stan_file [input_file] [person_id] [predict_day_count]")
+  print("Usage: Rscript --vanilla test.R stan_file [input_file] [person_id] [training_data_size] [predict_day_count]")
   quit()
 }
 
@@ -29,10 +31,15 @@ if(length(args) >= 3){
   person_id <- args[3];
 }
 if(length(args) >= 4){
-  predict_day_count <- as.numeric(args[4]);
+  if (model_file == "simple_categorical.stan") {
+    training_person_count <- 0;
+  }
+}
+if(length(args) >= 5){
+  predict_day_count <- as.numeric(args[5]);
 }
 
-data <- read_csv("../clean_data/expd081.csv")
+data <- read_csv(input_file);
 data <- data %>% 
 	mutate(
 	       date = ISOdate(year,month,day),
@@ -57,23 +64,29 @@ bad_ids <- data %>%
 
 data <- data %>% filter(!USERID %in% bad_ids)
 
-model <- stan_model("simple_categorical.stan",
+model <- stan_model(model_file,
 		    model_name="simple")
 
 if (person_id == -1) {
   person_id <- (data %>% sample_n(1) %>% select(USERID))[[1]]
 }
 
-person_data <- data %>% filter(USERID == person_id)
+training_people_ids <- c(as.character(person_id),
+			 as.character((
+			   data %>% sample_n(training_person_count) %>% select(USERID))[["USERID"]]));
+
+person_data <- data %>% filter(USERID %in% training_people_ids)
 person_categories <- person_data %>% 
 	filter(week == 1) %>% 
 	select(category) %>% 
 	unique() %>% 
+	drop_na() %>%
 	pull(category)
 person_days <- person_data %>% 
 	filter(week == 1) %>% 
 	select(days_in) %>% 
 	unique() %>% 
+	drop_na() %>%
 	pull(days_in);
 print(person_days)
 
@@ -85,8 +98,11 @@ cleaned_data <- list()
 i <- 1
 for (categ in person_categories){
   cat("Preparing category",format(as.numeric(categ)),"\n");
-
-  cat_exp <- person_data %>%
+  category_data <- list();
+  j <- 1
+  for (person in training_people_ids) {
+    cat_exp <- person_data %>%
+	  filter(USERID == person) %>%
 	  mutate(inter = interaction(category,week)) %>%
 	  group_by(inter,days_in,.drop=FALSE) %>% 
 	  summarize(sum=sum(COST),
@@ -98,36 +114,54 @@ for (categ in person_categories){
 	  filter(category==categ,week==1) %>% 
 	  pull(sum);
 
-  print(cat_exp)
-  cleaned_data[[i]] <- cat_exp;
+    cat_exp <- as.numeric(as.character(cat_exp));
+
+    if (length(cat_exp) == 0){
+      cat_exp <- rep(0.,length(person_days));
+    }
+
+    category_data[[j]] <- cat_exp;
+    j <- j + 1;
+  }
+  cleaned_data[[i]] <- category_data;
   i <- i + 1;
 }
 
-cleaned_data <- do.call(rbind,cleaned_data);
-
-print(cleaned_data)
+cleaned_data_matrix <- do.call(rbind,cleaned_data);
+cleaned_data <- array(unlist(cleaned_data),dim=c(dim(cleaned_data_matrix)[1],
+					 dim(cleaned_data_matrix)[2],
+					 length(person_days)));
 
 sample <- sampling(model,
-	     data=list(N=dim(cleaned_data)[2],
+	     data=list(P=dim(cleaned_data)[2],
+		       N=dim(cleaned_data)[3],
 		       K=dim(cleaned_data)[1],
 		       expenditure=cleaned_data,
 		       predict_day_count=predict_day_count),
+	     chains=1,
 	     verbose=FALSE);
 
-print(sample)
-
-combins <- expand.grid(categ=1:dim(cleaned_data)[1],day=1:predict_day_count);
-parameters_out <- c(sprintf("expen_predictions[%s,%s]",combins[["categ"]],combins[["day"]]),
-		    sprintf("total_prediction[%s]",1:predict_day_count));
+combins <- expand.grid(categ=1:dim(cleaned_data)[1],
+		       person=c(1),
+		       day=1:predict_day_count);
+per_day_combins <- expand.grid(person=c(1),
+			       day=1:predict_day_count);
+parameters_out <- c(sprintf("expen_predictions[%s,%s,%s]",
+			    combins[["categ"]],
+			    combins[["person"]],
+			    combins[["day"]]),
+		    sprintf("total_prediction[%s,%s]",
+			    per_day_combins[["person"]],
+			    per_day_combins[["day"]]));
 
 
 summary_data <- list();
 summary_idx <- 1;
+overall_result <- extract(sample,
+			  pars=parameters_out,
+			  permuted=TRUE);
 for(par in parameters_out){
-  result <- unlist(extract(
-			   sample,
-			   pars=parameters_out,
-			   permuted=TRUE)[par],
+  result <- unlist(overall_result[par],
 		   use.names=FALSE);
   pred_density <- density(result, n=512);
 
@@ -150,11 +184,11 @@ for(par in parameters_out){
 
     map_cat <- person_categories[as.numeric(idx[1])];
 
-    file_name <- sprintf("results/density_cat%s_day%s.csv",map_cat,idx[2]);
+    file_name <- sprintf("results/density_cat%s_day%s.csv",map_cat,idx[3]);
     write_csv(out,file_name,append=FALSE,col_names=TRUE);
 
     summary_data[[summary_idx]] <- c(
-				   day=as.character(idx[2]),
+				   day=as.character(idx[3]),
 				   cat=as.character(map_cat),
 				   low=quantiles[[1]],
 				   mle=x_max,
@@ -162,17 +196,19 @@ for(par in parameters_out){
     summary_idx <- summary_idx + 1;
   }
   else {
-    idx <- gsub("[^0-9]",
+    idx <- strsplit(
+	   gsub("[^0-9,]",
 		"",
 		sub("^[^/[]*", 
 		    "", 
-		    c(par)))
+		    c(par))),
+		",")[[1]]
 
-    file_name <- sprintf("results/density_total_day%s.csv",idx);
+    file_name <- sprintf("results/density_total_day%s.csv",idx[2]);
     write_csv(out,file_name,append=FALSE,col_names=TRUE);
 
     summary_data[[summary_idx]] <- c(
-				   day=as.character(idx),
+				   day=as.character(idx[2]),
 				   cat="-1",
 				   low=quantiles[[1]],
 				   mle=x_max,
@@ -189,9 +225,8 @@ summary_frame <- as.data.frame(do.call(rbind,summary_data)) %>%
 true_data <- list()
 i <- 1
 for (categ in person_categories){
-  cat("Preparing category",format(as.numeric(categ)),"\n");
-
   cat_exp <- person_data %>%
+	  filter(USERID == person_id) %>%
 	  mutate(inter = interaction(category,week)) %>%
 	  group_by(inter,days_in,.drop=FALSE) %>% 
 	  summarize(sum=sum(COST),
@@ -203,7 +238,6 @@ for (categ in person_categories){
 	  filter(category==categ,week==2) %>% 
 	  pull(sum);
 
-  print(cat_exp)
   day=1;
   for (elem in as.numeric(cat_exp)){
     true_data[[i]] <- c(day=day, cat=categ, true=elem);
@@ -228,7 +262,6 @@ day_cat_compare <- full_join(true_data,summary_frame) %>%
 	       high=ifelse(is.na(high),0,high));
 
 write_csv(day_cat_compare,"results/summary.csv",append=FALSE,col_names=TRUE);
-print(day_cat_compare)
 
 cat_compare <- day_cat_compare %>% 
 	group_by(day) %>% 
@@ -239,4 +272,3 @@ cat_compare <- day_cat_compare %>%
 		  pred=sum(mle))
 
 write_csv(cat_compare,"results/category_summary.csv",append=FALSE,col_names=TRUE);
-print(cat_compare)
