@@ -24,16 +24,17 @@ if (length(args) == 0){
 if (length(args) >= 1){
   model_file <- args[1];
 }
+if (model_file == "simple_categorical.stan") {
+  training_person_count <- 2;
+}
 if (length(args) >= 2){
   input_file <- args[2];  
 }
 if(length(args) >= 3){
-  person_id <- args[3];
+  person_id <- as.numeric(args[3]);
 }
 if(length(args) >= 4){
-  if (model_file == "simple_categorical.stan") {
-    training_person_count <- 0;
-  }
+  training_person_count <- as.numeric(args[4]);
 }
 if(length(args) >= 5){
   predict_day_count <- as.numeric(args[5]);
