@@ -15,9 +15,12 @@ model {
   expenditure ~ normal(mu_expen,stdeviation);
 }
 generated quantities{
-  real expen_predictions[predict_day_count];
+  real<lower=0> expen_predictions[predict_day_count];
   for (day in 1:predict_day_count) {
-    expen_predictions[day] = normal_rng(mu_expen,stdeviation);
+    real pred = normal_rng(mu_expen,stdeviation);
+    while (pred <= 0)
+      pred = normal_rng(mu_expen,stdeviation);
+    expen_predictions[day] = pred;
   }
 }
 
