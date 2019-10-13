@@ -191,8 +191,8 @@ for(par in parameters_out){
 
     map_cat <- person_categories[as.numeric(idx[1])];
 
-    file_name <- sprintf("results/density_cat%s_day%s.csv",map_cat,idx[3]);
-    write_csv(out,file_name,append=FALSE,col_names=TRUE);
+    #file_name <- sprintf("results/density_cat%s_day%s.csv",map_cat,idx[3]);
+    #write_csv(out,file_name,append=FALSE,col_names=TRUE);
 
     summary_data[[summary_idx]] <- c(
 				   day=as.character(idx[3]),
@@ -214,7 +214,7 @@ for(par in parameters_out){
 
     map_cat <- person_categories[as.numeric(idx[1])];
 
-    file_name <- sprintf("results/cumul_density_cat%s_day%s.csv",map_cat,idx[3]);
+    file_name <- sprintf("results/density_cat%s_day%s.csv",map_cat,idx[3]);
     write_csv(out,file_name,append=FALSE,col_names=TRUE);
 
     summary_data[[summary_idx]] <- c(
@@ -320,8 +320,8 @@ cumul_day_cat_compare <- full_join(cumul_true_data,summary_cumul) %>%
 	       mle=ifelse(is.na(mle),0,mle),
 	       high=ifelse(is.na(high),0,high));
 
-write_csv(day_cat_compare,"results/summary.csv",append=FALSE,col_names=TRUE);
-write_csv(cumul_day_cat_compare,"results/cumul_summary.csv",append=FALSE,col_names=TRUE);
+#write_csv(day_cat_compare,"results/summary.csv",append=FALSE,col_names=TRUE);
+write_csv(cumul_day_cat_compare,"results/summary.csv",append=FALSE,col_names=TRUE);
 
 cat_compare <- day_cat_compare %>% 
 	group_by(day) %>% 
