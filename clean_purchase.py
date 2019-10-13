@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy as sci
 import pandas as pd
+import numbers
 import csv
 import sys
 
@@ -10,8 +11,6 @@ filepath = sys.argv[1]
 filename = filepath[filepath.rfind('/')+1:]
 print(filepath)
 data = pd.read_csv(filepath)
-
-
 
 print("Adding year column")
 data['year'] = data.apply(lambda row: str(row.QREDATE)[-6:-2], axis=1)
@@ -28,6 +27,10 @@ for user in users:
     #Finding invalid users by determining if their QREDATE is invalid
     invalid = user_data.loc[user_data['QREDATE_'] == 'B']
     if len(invalid) > 0:
+        invalid_users.append(user)
+        data = data[data.NEWID != user]
+    invalid2 = user_data.loc[user_data.year == 'n'] 
+    if len(invalid2) > 0 and user not in invalid_users:
         invalid_users.append(user)
         data = data[data.NEWID != user]
 
