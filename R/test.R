@@ -53,10 +53,11 @@ substrRight <- function(x, n){
 }
 
 predict_day_count <- 7
-parameters_out <- sprintf("expen_predictions[%s]",1:predict_day_count);
 
+cleaned_data <- list()
+i <- 1
 for (categ in person_categories){
-  cat("Sampling category",format(as.numeric(categ)),"\n");
+  cat("Preparing category",format(as.numeric(categ)),"\n");
 
   cat_exp <- person_data %>%
 	  mutate(inter = interaction(category,week)) %>%
@@ -71,30 +72,52 @@ for (categ in person_categories){
 	  pull(sum);
 
   print(cat_exp)
-
-  sample <- sampling(model,
-  		     data=list(N=length(cat_exp),
-			       expenditure=cat_exp,
-			       predict_day_count=predict_day_count),
-		     verbose=FALSE);
-
-  print(sample)
-  result <- extract(sample,pars=parameters_out,permuted=TRUE);
-
-  for(par in parameters_out){
-    pred_density <- density(
-			    unlist(extract(
-				     sample,
-				     pars=parameters_out,
-				     permuted=TRUE)[par],
-			    	   use.names=FALSE),
-			    n=512);
-
-    out <- tibble(expenditure=pred_density$x,density=pred_density$y) %>%
-	    filter(expenditure >= 0);
-
-    file_name <- sprintf("results/density_%s_%s.csv",categ,par);
-    write_csv(out,file_name,append=FALSE,col_names=TRUE);
-  }
+  cleaned_data[[i]] <- cat_exp;
+  i <- i + 1;
 }
+
+cleaned_data <- do.call(rbind,cleaned_data);
+
+print(cleaned_data)
+
+sample <- sampling(model,
+	     data=list(N=dim(cleaned_data)[2],
+		       K=dim(cleaned_data)[1],
+		       expenditure=cleaned_data,
+		       predict_day_count=predict_day_count),
+	     verbose=FALSE);
+
+print(sample)
+
+combins <- expand.grid(categ=1:dim(cleaned_data)[1],day=1:predict_day_count);
+parameters_out <- sprintf("expen_predictions[%s,%s]",combins[["categ"]],combins[["day"]]);
+
+result <- extract(sample,pars=parameters_out,permuted=TRUE);
+
+for(par in parameters_out){
+  pred_density <- density(
+		    unlist(extract(
+			     sample,
+			     pars=parameters_out,
+			     permuted=TRUE)[par],
+			   use.names=FALSE),
+		    n=512);
+
+  out <- tibble(expenditure=pred_density$x,density=pred_density$y) %>%
+    filter(expenditure >= 0);
+
+  idx <- strsplit(
+	   gsub("[^0-9,]",
+		"",
+		sub("^[^/[]*", 
+		    "", 
+		    c(par))),
+		",")[[1]]
+
+  map_cat <- person_categories[as.numeric(idx[1])];
+
+  file_name <- sprintf("results/density_cat%s_day%s.csv",map_cat,idx[2]);
+    write_csv(out,file_name,append=FALSE,col_names=TRUE);
+}
+
 

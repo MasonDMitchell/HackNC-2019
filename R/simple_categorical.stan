@@ -1,26 +1,31 @@
 data {
-  int<lower=0> N;
-  real<lower=0> expenditure[N];
+  int<lower=1> N;
+  int<lower=1> K;
+  real<lower=0> expenditure[K,N];
   
   int<lower=0> predict_day_count;
 }
 parameters {
-  real<lower=0,upper=1e6> mu_expen;
-  real<lower=-100,upper=100> log_stdeviation;
+  real<lower=0,upper=1e6> mu_expen[K];
+  real<lower=-100,upper=100> log_stdeviation[K];
 }
 transformed parameters{
-  real stdeviation = exp(log_stdeviation);
+  real stdeviation[K] = exp(log_stdeviation);
 }
 model {
-  expenditure ~ normal(mu_expen,stdeviation);
+  for (categ in 1:K){
+    expenditure[K] ~ normal(mu_expen[K],stdeviation[K]);
+  }
 }
 generated quantities{
-  real<lower=0> expen_predictions[predict_day_count];
+  real<lower=0> expen_predictions[K,predict_day_count];
   for (day in 1:predict_day_count) {
-    real pred = normal_rng(mu_expen,stdeviation);
-    while (pred <= 0)
-      pred = normal_rng(mu_expen,stdeviation);
-    expen_predictions[day] = pred;
+    for (categ in 1:K){
+      real pred = normal_rng(mu_expen[categ],stdeviation[categ]);
+      while (pred <= 0)
+        pred = normal_rng(mu_expen[categ],stdeviation[categ]);
+      expen_predictions[categ,day] = pred;
+    }
   }
 }
 
