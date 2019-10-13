@@ -52,7 +52,7 @@ substrRight <- function(x, n){
   substr(x, nchar(x)-n+1, nchar(x))
 }
 
-predict_day_count <- 1
+predict_day_count <- 10
 
 cleaned_data <- list()
 i <- 1
@@ -93,19 +93,23 @@ combins <- expand.grid(categ=1:dim(cleaned_data)[1],day=1:predict_day_count);
 parameters_out <- c(sprintf("expen_predictions[%s,%s]",combins[["categ"]],combins[["day"]]),
 		    sprintf("total_prediction[%s]",1:predict_day_count));
 
-result <- extract(sample,pars=parameters_out,permuted=TRUE);
 
+summary_data <- list();
+summary_idx <- 1;
 for(par in parameters_out){
-  pred_density <- density(
-		    unlist(extract(
-			     sample,
-			     pars=parameters_out,
-			     permuted=TRUE)[par],
-			   use.names=FALSE),
-		    n=512);
+  result <- unlist(extract(
+			   sample,
+			   pars=parameters_out,
+			   permuted=TRUE)[par],
+		   use.names=FALSE);
+  pred_density <- density(result, n=512);
 
   out <- tibble(expenditure=pred_density$x,density=pred_density$y) %>%
     filter(expenditure >= 0);
+
+  x_max <- pred_density$x[which.max(pred_density$y)]
+  quantiles <- quantile(result,c(0.05,0.95));
+
 
   if(startsWith(par,"expen")){
 
@@ -121,6 +125,14 @@ for(par in parameters_out){
 
     file_name <- sprintf("results/density_cat%s_day%s.csv",map_cat,idx[2]);
     write_csv(out,file_name,append=FALSE,col_names=TRUE);
+
+    summary_data[[summary_idx]] <- c(
+				   day=idx[2],
+				   cat=map_cat,
+				   low=quantiles[[1]],
+				   mle=x_max,
+				   high=quantiles[[2]]);
+    summary_idx <- summary_idx + 1;
   }
   else {
     idx <- gsub("[^0-9]",
@@ -131,7 +143,17 @@ for(par in parameters_out){
 
     file_name <- sprintf("results/density_total_day%s.csv",idx);
     write_csv(out,file_name,append=FALSE,col_names=TRUE);
+
+    summary_data[[summary_idx]] <- c(
+				   day=idx,
+				   cat=-1,
+				   low=quantiles[[1]],
+				   mle=x_max,
+				   high=quantiles[[2]]);
+    summary_idx <- summary_idx + 1;
   }
 }
 
+summary_frame <- as.data.frame(do.call(rbind,summary_data));
+write_csv(summary_frame,"results/summary.csv",append=FALSE,col_names=TRUE);
 
