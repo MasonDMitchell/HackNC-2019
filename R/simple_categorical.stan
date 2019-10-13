@@ -42,7 +42,7 @@ generated quantities{
           pred = normal_rng(mu_expen[categ],stdeviation[categ]);
         expen_predictions[categ,person,day] = pred;
 	cumul_predictions[categ,person,day+1] = cumul_predictions[categ,person,day] + pred;
-        total_prediction[person,day] += pred;
+        total_prediction[person,day] += cumul_predictions[categ,person,day + 1];
       }
     }
   }

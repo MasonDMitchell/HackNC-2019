@@ -141,6 +141,83 @@ sample <- sampling(model,
 	     chains=1,
 	     verbose=FALSE);
 
+true_data <- list()
+pre_data <- list()
+i <- 1
+j <- 1
+for (categ in person_categories){
+  cat_exp <- person_data %>%
+	  filter(USERID == person_id) %>%
+	  mutate(inter = interaction(category,week)) %>%
+	  group_by(inter,days_in,.drop=FALSE) %>% 
+	  summarize(sum=sum(COST),
+		    category=first(na.omit(category)),
+		    week=first(na.omit(week))) %>% 
+	  mutate(category=first(na.omit(category)),
+		 week=first(na.omit(week))) %>%
+	  ungroup() %>% 
+	  arrange(as.numeric(as.character(days_in))) %>%
+	  filter(category==categ,week==2) %>% 
+	  pull(sum);
+
+  day=1;
+  for (elem in as.numeric(cat_exp)){
+    true_data[[i]] <- c(day=day, cat=categ, true=elem);
+    i <- i + 1;
+    day <- day + 1;
+  }
+
+  cat_exp <- person_data %>%
+	  filter(USERID == person_id) %>%
+	  mutate(inter = interaction(category,week)) %>%
+	  group_by(inter,days_in,.drop=FALSE) %>% 
+	  summarize(sum=sum(COST),
+		    category=first(na.omit(category)),
+		    week=first(na.omit(week))) %>% 
+	  mutate(category=first(na.omit(category)),
+		 week=first(na.omit(week))) %>%
+	  ungroup() %>% 
+	  arrange(as.numeric(as.character(days_in))) %>%
+	  filter(category==categ,week==1) %>% 
+	  pull(sum);
+  day=1;
+  for (elem in as.numeric(as.character(cat_exp))){
+    pre_data[[j]] <- c(day=day, cat=categ, true=elem);
+    j <- j + 1;
+    day <- day + 1;
+  }
+}
+
+true_data <- as.data.frame(do.call(rbind,true_data)) %>%
+	mutate(true=as.numeric(as.character(true)));
+
+true_data <- rbind(true_data, 
+		   true_data %>% 
+			   group_by(day) %>% 
+			   summarize(true=sum(true)) %>% 
+			   mutate(cat=as.factor(-1)));
+
+pre_data <- as.data.frame(do.call(rbind,pre_data)) %>%
+	mutate(true=as.numeric(as.character(true)));
+
+pre_data <- rbind(pre_data, 
+		   pre_data %>% 
+			   group_by(day) %>% 
+			   summarize(true=sum(true)) %>% 
+			   mutate(cat=as.factor(-1)));
+
+cumul_pre_data <- pre_data %>%
+	group_by(cat) %>% 
+	mutate(day=as.numeric(as.character(day))) %>%
+	arrange(day) %>%
+	mutate(true = cumsum(true))
+
+max_exp_start <- max(unlist(cumul_pre_data %>% 
+			select(true),
+			use.names=FALSE))
+
+write_csv(cumul_pre_data,"results/week_1_data.csv",append=FALSE,col_names=TRUE);
+
 combins <- expand.grid(categ=1:dim(cleaned_data)[1],
 		       person=c(1),
 		       day=1:predict_day_count);
@@ -172,7 +249,7 @@ for(par in parameters_out){
 		   use.names=FALSE);
   pred_density <- density(result, n=512);
 
-  out <- tibble(expenditure=pred_density$x,density=pred_density$y) %>%
+  out <- tibble(expenditure=pred_density$x+max_exp_start,density=pred_density$y) %>%
     filter(expenditure >= 0);
 
   x_max <- pred_density$x[which.max(pred_density$y)]
@@ -257,39 +334,6 @@ summary_frame <- as.data.frame(do.call(rbind,summary_data)) %>%
 summary_cumul <- summary_frame %>% filter(cumul==TRUE) %>% select(-cumul)
 summary_frame <- summary_frame %>% filter(cumul==FALSE) %>% select(-cumul)
 
-true_data <- list()
-i <- 1
-for (categ in person_categories){
-  cat_exp <- person_data %>%
-	  filter(USERID == person_id) %>%
-	  mutate(inter = interaction(category,week)) %>%
-	  group_by(inter,days_in,.drop=FALSE) %>% 
-	  summarize(sum=sum(COST),
-		    category=first(na.omit(category)),
-		    week=first(na.omit(week))) %>% 
-	  mutate(category=first(na.omit(category)),
-		 week=first(na.omit(week))) %>%
-	  ungroup() %>% 
-	  filter(category==categ,week==2) %>% 
-	  pull(sum);
-
-  day=1;
-  for (elem in as.numeric(cat_exp)){
-    true_data[[i]] <- c(day=day, cat=categ, true=elem);
-    i <- i + 1;
-    day <- day + 1;
-  }
-}
-
-true_data <- as.data.frame(do.call(rbind,true_data)) %>%
-	mutate(true=as.numeric(as.character(true)));
-
-true_data <- rbind(true_data, 
-		   true_data %>% 
-			   group_by(day) %>% 
-			   summarize(true=sum(true)) %>% 
-			   mutate(cat=as.factor(-1)));
-
 summary_cumul <- rbind(summary_cumul, 
 		   summary_cumul %>% 
 			   group_by(day) %>% 
@@ -300,13 +344,16 @@ summary_cumul <- rbind(summary_cumul,
 
 summary_cumul <- summary_cumul %>%
 	filter(as.numeric(as.character(day)) > 1) %>%
-	mutate(day = as.numeric(as.character(day)) - 1)
+	mutate(day = as.numeric(as.character(day)) - 1) %>%
+	mutate(low = low + max_exp_start,
+	       mle = mle + max_exp_start,
+	       high = high + max_exp_start)
 
 cumul_true_data <- true_data %>%
 	group_by(cat) %>% 
 	mutate(day=as.numeric(as.character(day))) %>%
 	arrange(day) %>%
-	mutate(true = cumsum(true))
+	mutate(true = cumsum(true) + max_exp_start)
 
 day_cat_compare <- full_join(true_data,summary_frame) %>% 
 	mutate(true=ifelse(is.na(true),0,true),
@@ -327,6 +374,7 @@ cat_compare <- day_cat_compare %>%
 	group_by(day) %>% 
 	filter(!all(true==0)) %>% 
 	ungroup() %>% 
+	filter(cat!=-1) %>%
 	group_by(cat) %>% 
 	summarize(true=sum(true),
 		  pred=sum(mle))
