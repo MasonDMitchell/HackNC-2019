@@ -7,14 +7,16 @@ data {
 }
 parameters {
   real<lower=0,upper=1e6> mu_expen[K];
-  real<lower=-100,upper=100> log_stdeviation[K];
+  real<lower=-4,upper=12> log_stdeviation[K];
 }
 transformed parameters{
   real stdeviation[K] = exp(log_stdeviation);
 }
 model {
+  log_stdeviation ~ normal(0,1);
+  mu_expen ~ normal(150,40);
   for (categ in 1:K){
-    expenditure[K] ~ normal(mu_expen[K],stdeviation[K]);
+    expenditure[categ] ~ normal(mu_expen[categ],stdeviation[categ]);
   }
 }
 generated quantities{

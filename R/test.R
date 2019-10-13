@@ -52,7 +52,7 @@ substrRight <- function(x, n){
   substr(x, nchar(x)-n+1, nchar(x))
 }
 
-predict_day_count <- 7
+predict_day_count <- 1
 
 cleaned_data <- list()
 i <- 1
