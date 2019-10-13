@@ -19,12 +19,15 @@ model {
 }
 generated quantities{
   real<lower=0> expen_predictions[K,predict_day_count];
+  real<lower=0> total_prediction[predict_day_count];
   for (day in 1:predict_day_count) {
+    total_prediction[day] = 0;
     for (categ in 1:K){
       real pred = normal_rng(mu_expen[categ],stdeviation[categ]);
       while (pred <= 0)
         pred = normal_rng(mu_expen[categ],stdeviation[categ]);
       expen_predictions[categ,day] = pred;
+      total_prediction[day] += pred;
     }
   }
 }

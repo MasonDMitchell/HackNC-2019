@@ -90,7 +90,8 @@ sample <- sampling(model,
 print(sample)
 
 combins <- expand.grid(categ=1:dim(cleaned_data)[1],day=1:predict_day_count);
-parameters_out <- sprintf("expen_predictions[%s,%s]",combins[["categ"]],combins[["day"]]);
+parameters_out <- c(sprintf("expen_predictions[%s,%s]",combins[["categ"]],combins[["day"]]),
+		    sprintf("total_prediction[%s]",1:predict_day_count));
 
 result <- extract(sample,pars=parameters_out,permuted=TRUE);
 
@@ -106,7 +107,9 @@ for(par in parameters_out){
   out <- tibble(expenditure=pred_density$x,density=pred_density$y) %>%
     filter(expenditure >= 0);
 
-  idx <- strsplit(
+  if(startsWith(par,"expen")){
+
+    idx <- strsplit(
 	   gsub("[^0-9,]",
 		"",
 		sub("^[^/[]*", 
@@ -114,10 +117,21 @@ for(par in parameters_out){
 		    c(par))),
 		",")[[1]]
 
-  map_cat <- person_categories[as.numeric(idx[1])];
+    map_cat <- person_categories[as.numeric(idx[1])];
 
-  file_name <- sprintf("results/density_cat%s_day%s.csv",map_cat,idx[2]);
+    file_name <- sprintf("results/density_cat%s_day%s.csv",map_cat,idx[2]);
     write_csv(out,file_name,append=FALSE,col_names=TRUE);
+  }
+  else {
+    idx <- gsub("[^0-9]",
+		"",
+		sub("^[^/[]*", 
+		    "", 
+		    c(par)))
+
+    file_name <- sprintf("results/density_total_day%s.csv",idx);
+    write_csv(out,file_name,append=FALSE,col_names=TRUE);
+  }
 }
 
 
