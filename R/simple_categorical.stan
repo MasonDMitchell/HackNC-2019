@@ -8,13 +8,13 @@ data {
 }
 parameters {
   real<lower=0,upper=1e6> mu_expen[K];
-  real<lower=-4,upper=12> log_stdeviation[K];
+  real<lower=-15,upper=15> log_stdeviation[K];
 }
 transformed parameters{
   real stdeviation[K] = exp(log_stdeviation);
 }
 model {
-  log_stdeviation ~ normal(0,1);
+  log_stdeviation ~ normal(0,3);
   mu_expen ~ normal(150,40);
   for (categ in 1:K){
     for (person in 1:P){
