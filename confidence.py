@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import sys
 
-filepath = sys.argv[1]
+filepath = "R/results/summary.csv"
 df = pd.read_csv(filepath)
 
 true = df[df['cat']==-1]
