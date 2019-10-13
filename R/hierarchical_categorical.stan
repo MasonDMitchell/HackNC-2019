@@ -29,7 +29,15 @@ model {
 }
 generated quantities{
   real<lower=0> expen_predictions[K,P,predict_day_count];
+  real<lower=0> cumul_predictions[K,P,predict_day_count+1];
   real<lower=0> total_prediction[P,predict_day_count];
+  
+  for (categ in 1:K) {
+    for (person in 1:P) {
+      cumul_predictions[categ,person,1] = 0;
+    }
+  }
+
   for (day in 1:predict_day_count) {
     for (person in 1:P){
       total_prediction[person,day] = 0;
@@ -38,6 +46,7 @@ generated quantities{
         while (pred <= 0)
           pred = normal_rng(mu_person[categ,person],stdev_person[categ]);
         expen_predictions[categ,person,day] = pred;
+	cumul_predictions[categ,person,day+1] = cumul_predictions[categ,person,day] + pred;
         total_prediction[person,day] += pred;
       }
     }

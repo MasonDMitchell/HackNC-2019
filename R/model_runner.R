@@ -144,12 +144,19 @@ sample <- sampling(model,
 combins <- expand.grid(categ=1:dim(cleaned_data)[1],
 		       person=c(1),
 		       day=1:predict_day_count);
+cumul_combins <- expand.grid(categ=1:dim(cleaned_data)[1],
+		       person=c(1),
+		       day=1:(predict_day_count+1));
 per_day_combins <- expand.grid(person=c(1),
 			       day=1:predict_day_count);
 parameters_out <- c(sprintf("expen_predictions[%s,%s,%s]",
 			    combins[["categ"]],
 			    combins[["person"]],
 			    combins[["day"]]),
+		    sprintf("cumul_predictions[%s,%s,%s]",
+			    cumul_combins[["categ"]],
+			    cumul_combins[["person"]],
+			    cumul_combins[["day"]]),
 		    sprintf("total_prediction[%s,%s]",
 			    per_day_combins[["person"]],
 			    per_day_combins[["day"]]));
@@ -192,7 +199,31 @@ for(par in parameters_out){
 				   cat=as.character(map_cat),
 				   low=quantiles[[1]],
 				   mle=x_max,
-				   high=quantiles[[2]]);
+				   high=quantiles[[2]],
+				   cumul=FALSE);
+    summary_idx <- summary_idx + 1;
+  }
+  else if (startsWith(par,"cumul")){
+    idx <- strsplit(
+           gsub("[^0-9,]",
+                "",
+                sub("^[^/[]*",
+                    "",
+                    c(par))),
+                ",")[[1]]
+
+    map_cat <- person_categories[as.numeric(idx[1])];
+
+    file_name <- sprintf("results/cumul_density_cat%s_day%s.csv",map_cat,idx[3]);
+    write_csv(out,file_name,append=FALSE,col_names=TRUE);
+
+    summary_data[[summary_idx]] <- c(
+                                   day=as.character(idx[3]),
+                                   cat=as.character(map_cat),
+                                   low=quantiles[[1]],
+                                   mle=x_max,
+                                   high=quantiles[[2]],
+				   cumul=TRUE);
     summary_idx <- summary_idx + 1;
   }
   else {
@@ -212,7 +243,8 @@ for(par in parameters_out){
 				   cat="-1",
 				   low=quantiles[[1]],
 				   mle=x_max,
-				   high=quantiles[[2]]);
+				   high=quantiles[[2]],
+				   cumul=FALSE);
     summary_idx <- summary_idx + 1;
   }
 }
@@ -221,6 +253,9 @@ summary_frame <- as.data.frame(do.call(rbind,summary_data)) %>%
 	mutate(low=as.numeric(as.character(low)),
 	       mle=as.numeric(as.character(mle)),
 	       high=as.numeric(as.character(high)));
+
+summary_cumul <- summary_frame %>% filter(cumul==TRUE) %>% select(-cumul)
+summary_frame <- summary_frame %>% filter(cumul==FALSE) %>% select(-cumul)
 
 true_data <- list()
 i <- 1
@@ -255,13 +290,38 @@ true_data <- rbind(true_data,
 			   summarize(true=sum(true)) %>% 
 			   mutate(cat=as.factor(-1)));
 
+summary_cumul <- rbind(summary_cumul, 
+		   summary_cumul %>% 
+			   group_by(day) %>% 
+			   summarize(low=sum(low),
+				     mle=sum(mle),
+				     high=sum(high)) %>% 
+			   mutate(cat=as.factor(-1)));
+
+summary_cumul <- summary_cumul %>%
+	filter(as.numeric(as.character(day)) > 1) %>%
+	mutate(day = as.numeric(as.character(day)) - 1)
+
+cumul_true_data <- true_data %>%
+	group_by(cat) %>% 
+	mutate(day=as.numeric(as.character(day))) %>%
+	arrange(day) %>%
+	mutate(true = cumsum(true))
+
 day_cat_compare <- full_join(true_data,summary_frame) %>% 
 	mutate(true=ifelse(is.na(true),0,true),
 	       low=ifelse(is.na(low),0,low),
 	       mle=ifelse(is.na(mle),0,mle),
 	       high=ifelse(is.na(high),0,high));
 
+cumul_day_cat_compare <- full_join(cumul_true_data,summary_cumul) %>% 
+	mutate(true=ifelse(is.na(true),0,true),
+	       low=ifelse(is.na(low),0,low),
+	       mle=ifelse(is.na(mle),0,mle),
+	       high=ifelse(is.na(high),0,high));
+
 write_csv(day_cat_compare,"results/summary.csv",append=FALSE,col_names=TRUE);
+write_csv(cumul_day_cat_compare,"results/cumul_summary.csv",append=FALSE,col_names=TRUE);
 
 cat_compare <- day_cat_compare %>% 
 	group_by(day) %>% 
