@@ -2,11 +2,29 @@
 library(tidyverse)
 library(rstan)
 
+args = commandArgs(trailingOnly=TRUE)
+
 rstan_options("auto_write" = TRUE)
 
 dir.create(file.path(".", "results"), showWarnings = FALSE)
 
 predict_day_count <- 30
+person_id <- -1;
+input_file <- "../clean_data/expd081.csv";
+
+if (length(args) == 0){
+  print("Usage: Rscript --vanilla test.R input_file [person_id] [predict_day_count]")
+  quit()
+}
+if (length(args) >= 1){
+  input_file <- args[1];  
+}
+if(length(args) >= 2){
+  person_id <- args[2];
+}
+if(length(args) >= 3){
+  predict_day_count <- as.numeric(args[2]);
+}
 
 data <- read_csv("../clean_data/expd081.csv")
 data <- data %>% 
@@ -36,7 +54,10 @@ data <- data %>% filter(!USERID %in% bad_ids)
 model <- stan_model("simple_categorical.stan",
 		    model_name="simple")
 
-person_id <- (data %>% sample_n(1) %>% select(USERID))[[1]]
+if (person_id == -1) {
+  person_id <- (data %>% sample_n(1) %>% select(USERID))[[1]]
+}
+
 person_data <- data %>% filter(USERID == person_id)
 person_categories <- person_data %>% 
 	filter(week == 1) %>% 
