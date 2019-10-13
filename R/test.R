@@ -6,6 +6,8 @@ rstan_options("auto_write" = TRUE)
 
 dir.create(file.path(".", "results"), showWarnings = FALSE)
 
+predict_day_count <- 30
+
 data <- read_csv("../clean_data/expd081.csv")
 data <- data %>% 
 	mutate(
@@ -51,8 +53,6 @@ print(person_days)
 substrRight <- function(x, n){
   substr(x, nchar(x)-n+1, nchar(x))
 }
-
-predict_day_count <- 10
 
 cleaned_data <- list()
 i <- 1
@@ -127,8 +127,8 @@ for(par in parameters_out){
     write_csv(out,file_name,append=FALSE,col_names=TRUE);
 
     summary_data[[summary_idx]] <- c(
-				   day=idx[2],
-				   cat=map_cat,
+				   day=as.character(idx[2]),
+				   cat=as.character(map_cat),
 				   low=quantiles[[1]],
 				   mle=x_max,
 				   high=quantiles[[2]]);
@@ -145,8 +145,8 @@ for(par in parameters_out){
     write_csv(out,file_name,append=FALSE,col_names=TRUE);
 
     summary_data[[summary_idx]] <- c(
-				   day=idx,
-				   cat=-1,
+				   day=as.character(idx),
+				   cat="-1",
 				   low=quantiles[[1]],
 				   mle=x_max,
 				   high=quantiles[[2]]);
@@ -154,6 +154,62 @@ for(par in parameters_out){
   }
 }
 
-summary_frame <- as.data.frame(do.call(rbind,summary_data));
-write_csv(summary_frame,"results/summary.csv",append=FALSE,col_names=TRUE);
+summary_frame <- as.data.frame(do.call(rbind,summary_data)) %>%
+	mutate(low=as.numeric(as.character(low)),
+	       mle=as.numeric(as.character(mle)),
+	       high=as.numeric(as.character(high)));
 
+true_data <- list()
+i <- 1
+for (categ in person_categories){
+  cat("Preparing category",format(as.numeric(categ)),"\n");
+
+  cat_exp <- person_data %>%
+	  mutate(inter = interaction(category,week)) %>%
+	  group_by(inter,days_in,.drop=FALSE) %>% 
+	  summarize(sum=sum(COST),
+		    category=first(na.omit(category)),
+		    week=first(na.omit(week))) %>% 
+	  mutate(category=first(na.omit(category)),
+		 week=first(na.omit(week))) %>%
+	  ungroup() %>% 
+	  filter(category==categ,week==2) %>% 
+	  pull(sum);
+
+  print(cat_exp)
+  day=1;
+  for (elem in as.numeric(cat_exp)){
+    true_data[[i]] <- c(day=day, cat=categ, true=elem);
+    i <- i + 1;
+    day <- day + 1;
+  }
+}
+
+true_data <- as.data.frame(do.call(rbind,true_data)) %>%
+	mutate(true=as.numeric(as.character(true)));
+
+true_data <- rbind(true_data, 
+		   true_data %>% 
+			   group_by(day) %>% 
+			   summarize(true=sum(true)) %>% 
+			   mutate(cat=as.factor(-1)));
+
+day_cat_compare <- full_join(true_data,summary_frame) %>% 
+	mutate(true=ifelse(is.na(true),0,true),
+	       low=ifelse(is.na(low),0,low),
+	       mle=ifelse(is.na(mle),0,mle),
+	       high=ifelse(is.na(high),0,high));
+
+write_csv(day_cat_compare,"results/summary.csv",append=FALSE,col_names=TRUE);
+print(day_cat_compare)
+
+cat_compare <- day_cat_compare %>% 
+	group_by(day) %>% 
+	filter(!all(true==0)) %>% 
+	ungroup() %>% 
+	group_by(cat) %>% 
+	summarize(true=sum(true),
+		  pred=sum(mle))
+
+write_csv(cat_compare,"results/category_summary.csv",append=FALSE,col_names=TRUE);
+print(cat_compare)
